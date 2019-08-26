@@ -17,8 +17,10 @@ import android.support.design.widget.NavigationView;
 import android.support.design.widget.Snackbar;
 import android.support.v4.app.Fragment;
 import android.support.v4.app.FragmentManager;
-import android.support.v4.app.FragmentTransaction;
+import android.support.v4.app.FragmentPagerAdapter;
+import android.support.v4.app.FragmentStatePagerAdapter;
 import android.support.v4.view.GravityCompat;
+import android.support.v4.view.ViewPager;
 import android.support.v4.widget.DrawerLayout;
 import android.support.v4.widget.SwipeRefreshLayout;
 import android.support.v7.app.ActionBarDrawerToggle;
@@ -37,34 +39,32 @@ import net.zeevox.myhome.Heater;
 import net.zeevox.myhome.R;
 import net.zeevox.myhome.Sensor;
 import net.zeevox.myhome.Sensors;
-import net.zeevox.myhome.WebSocketUtils;
 import net.zeevox.myhome.json.CustomJsonObject;
 import net.zeevox.myhome.json.Methods;
 import net.zeevox.myhome.json.Params;
+import net.zeevox.myhome.websocket.CustomWebSocketListener;
+import net.zeevox.myhome.websocket.WebSocketUtils;
 
-import java.net.SocketTimeoutException;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
 import okhttp3.Response;
 import okhttp3.WebSocket;
-import okhttp3.WebSocketListener;
 
 public class MainActivity extends AppCompatActivity
-        implements NavigationView.OnNavigationItemSelectedListener {
+        implements NavigationView.OnNavigationItemSelectedListener, Sensors.OnListChangedListener {
 
     public static final Sensors sensors = new Sensors();
     public static Heater heater;
     public static WebSocketUtils webSocketUtils;
-    private final boolean[] web_socket_connected = {false};
     private final FragmentManager fragmentManager = getSupportFragmentManager();
     private final Gson gson = new Gson();
     private final Handler handler = new Handler();
-    private WebSocketListener webSocketListener;
+    private CustomWebSocketListener webSocketListener;
     private NavigationView navigationView;
-    private MenuItem menuItem;
     private SharedPreferences preferences;
     private SwipeRefreshLayout swipeRefreshLayout;
     private final Runnable refreshData = new Runnable() {
@@ -74,6 +74,19 @@ public class MainActivity extends AppCompatActivity
             handler.postDelayed(this, 5000);
         }
     };
+    /**
+     * The {@link android.support.v4.view.PagerAdapter} that will provide
+     * fragments for each of the sections. We use a
+     * {@link FragmentPagerAdapter} derivative, which will keep every
+     * loaded fragment in memory. If this becomes too memory intensive, it
+     * may be best to switch to a
+     * {@link android.support.v4.app.FragmentStatePagerAdapter}.
+     */
+    private SectionsPagerAdapter mSectionsPagerAdapter;
+    /**
+     * The {@link ViewPager} that will host the section contents.
+     */
+    private ViewPager mViewPager;
 
     public static int toInt(Object o) {
         Double d = (Double) o;
@@ -98,9 +111,7 @@ public class MainActivity extends AppCompatActivity
             getWindow().setNavigationBarColor(getResources().getColor(R.color.colorPrimary));
         }
 
-        FragmentTransaction fragmentTransaction = fragmentManager.beginTransaction();
-        fragmentTransaction.replace(R.id.frame_layout, new DashboardFragment(), DashboardFragment.class.getSimpleName());
-        fragmentTransaction.commit();
+        setUpViewPager();
 
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
@@ -113,6 +124,8 @@ public class MainActivity extends AppCompatActivity
 
         Objects.requireNonNull(getSupportActionBar()).setElevation(0);
 
+        sensors.setOnHeadlineSelectedListener(this);
+
         navigationView = findViewById(R.id.nav_view);
         navigationView.setNavigationItemSelectedListener(this);
         ((TextView) navigationView.getHeaderView(0).findViewById(R.id.nav_header_app_version)).setText(String.format(getString(R.string.nav_app_version), BuildConfig.VERSION_NAME));
@@ -122,20 +135,17 @@ public class MainActivity extends AppCompatActivity
             swipeRefreshLayout.setRefreshing(false);
             if (!refreshData()) {
                 Snackbar.make(findViewById(android.R.id.content), R.string.error_device_connecting, Snackbar.LENGTH_SHORT).show();
-            } else if (menuItem != null) {
-                onNavigationItemSelected(menuItem);
             }
         });
         swipeRefreshLayout.setColorSchemeColors(getResources().getColor(R.color.colorAccent));
 
         webSocketUtils = new WebSocketUtils();
-        webSocketListener = new WebSocketListener() {
+        webSocketListener = new CustomWebSocketListener() {
             @Override
             public void onOpen(WebSocket webSocket, Response response) {
                 super.onOpen(webSocket, response);
-                web_socket_connected[0] = true;
                 MainActivity.this.runOnUiThread(() -> swipeRefreshLayout.setRefreshing(false));
-                webSocket.send(gson.toJson(new CustomJsonObject().setMethod(Methods.DATA_LIST).setId(1157)));
+                webSocket.send(gson.toJson(new CustomJsonObject().setMethod(Methods.DATA_LIST).setId(Methods.Codes.DATA_LIST)));
                 refreshData();
             }
 
@@ -151,18 +161,21 @@ public class MainActivity extends AppCompatActivity
                     return;
                 }
 
+                final Fragment fragment = mSectionsPagerAdapter.getItem(mViewPager.getCurrentItem());
+
                 switch (toInt(data.get("id"))) {
-                    case 1157: // A message listing the available sensors
+                    case Methods.Codes.DATA_LIST: // A message listing the available sensors
                         try {
                             ArrayList<Map> sensorsList = (ArrayList<Map>) data.get(Sensor.RESULT);
                             assert sensorsList != null;
+                            mSectionsPagerAdapter.notifyDataSetChanged();
                             for (Map sensorInfo : sensorsList) {
                                 if (sensorInfo.get("name") != null) {
                                     if (sensors.getBySID(toInt(sensorInfo.get(Sensor.SID))) == null) {
                                         Sensor sensorToAdd = new Sensor(toInt(sensorInfo.get(Sensor.SID)));
                                         sensorToAdd.setName((String) sensorInfo.get(Sensor.NAME));
                                         sensorToAdd.addSubID(toInt(sensorInfo.get(Sensor.SUBID)));
-                                        sensors.getList().add(sensorToAdd);
+                                        sensors.addSensor(sensorToAdd);
                                     } else {
                                         Sensor sensorToManage = sensors.getBySID(toInt(sensorInfo.get(Sensor.SID)));
                                         sensorToManage.addSubID(toInt(sensorInfo.get(Sensor.SUBID)));
@@ -184,18 +197,21 @@ public class MainActivity extends AppCompatActivity
                             }
                         });
                         break;
-                    case 637:
+                    case Methods.Codes.DATA_GET:
                         Map resultSensor = (Map) data.get(Sensor.RESULT);
                         assert resultSensor != null;
                         Sensor sensor = sensors.getBySID(toInt(resultSensor.get(Sensor.SID)));
                         sensor.setTimestamp((Double) resultSensor.get(Sensor.TIMESTAMP));
                         sensor.newValue(toInt(resultSensor.get(Sensor.SUBID)), (Double) resultSensor.get(Sensor.VALUE));
-                        Fragment fragment1 = fragmentManager.findFragmentByTag(SensorFragment.class.getSimpleName());
-                        if (fragment1 instanceof SensorFragment) ((SensorFragment) fragment1).onSensorUpdated(sensor);
+                        if (fragment instanceof SensorFragment)
+                            ((SensorFragment) fragment).onSensorUpdated(sensor);
                         break;
-                    case 638:
+                    case Methods.Codes.HEATER_GET_LIMITS:
                         ArrayList<Map> mapArrayList = (ArrayList<Map>) data.get(Sensor.RESULT);
                         Map resultSHL;
+
+                        // If this particular sensor does not have heater target values set, the array will be empty
+                        // We use the fact that there will be no elements and do not continue any further.
                         try {
                             resultSHL = mapArrayList.get(0);
                         } catch (IndexOutOfBoundsException e) {
@@ -208,18 +224,18 @@ public class MainActivity extends AppCompatActivity
                                 toInt(resultSHL.get(Sensor.SUBID)),
                                 (Double) resultSHL.get(Sensor.TARGET_MIN),
                                 (Double) resultSHL.get(Sensor.TARGET_MAX));
-                        Fragment fragment2 = fragmentManager.findFragmentByTag(SensorFragment.class.getSimpleName());
-                        if (fragment2 instanceof SensorFragment) ((SensorFragment) fragment2).onSensorUpdated(sensor1);
+                        if (fragment instanceof SensorFragment)
+                            ((SensorFragment) fragment).onSensorUpdated(sensor1);
                         break;
-                    case 8347:
+                    case Methods.Codes.HEATER_GET_STATUS:
                         Map resultHeater = (Map) data.get(Sensor.RESULT);
                         assert resultHeater != null;
                         heater = new Heater((boolean) resultHeater.get(Heater.ON), toInt(resultHeater.get(Heater.DURATION)));
-                        Fragment fragment3 = fragmentManager.findFragmentByTag(DashboardFragment.class.getSimpleName());
-                        if (fragment3 instanceof DashboardFragment) ((DashboardFragment) fragment3).onHeaterUpdated(MainActivity.this, heater);
+                        if (fragment instanceof DashboardFragment)
+                            ((DashboardFragment) fragment).onHeaterUpdated(MainActivity.this, heater);
                         break;
-                    case 53:
-                        webSocket.send(gson.toJson(new CustomJsonObject().setId(8347).setMethod(Methods.HEATER_GET_STATUS)));
+                    case Methods.Codes.HEATER_SET_STATUS:
+                        webSocket.send(gson.toJson(new CustomJsonObject().setId(Methods.Codes.HEATER_GET_STATUS).setMethod(Methods.HEATER_GET_STATUS)));
                         break;
                 }
             }
@@ -227,20 +243,7 @@ public class MainActivity extends AppCompatActivity
             @Override
             public void onClosed(WebSocket webSocket, int code, String reason) {
                 super.onClosed(webSocket, code, reason);
-                Log.w("WebSocket.onClosed", reason);
-                web_socket_connected[0] = false;
-            }
-
-            @Override
-            public void onFailure(WebSocket webSocket, Throwable t, Response response) {
-                super.onFailure(webSocket, t, response);
-                if (t instanceof SocketTimeoutException) {
-                    Snackbar.make(findViewById(android.R.id.content), R.string.error_connection_failure, Snackbar.LENGTH_SHORT)
-                            .setAction(R.string.action_refresh, v -> refreshData())
-                            .show();
-                }
-                t.printStackTrace();
-                web_socket_connected[0] = false;
+                webSocketUtils.clearWebSocket();
             }
         };
     }
@@ -254,17 +257,25 @@ public class MainActivity extends AppCompatActivity
     private boolean refreshData() {
         Log.d(getClass().getSimpleName(), "refreshData called");
 
-        if (!web_socket_connected[0]) {
+        // If the WebSocket is not connected we ought
+        if (!webSocketUtils.isWebSocketConnected()) {
             // Turn on the WiFi of the device if it isn't already
             WifiManager wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
             if (!wifiManager.isWifiEnabled()) wifiManager.setWifiEnabled(true);
 
-            // If WiFi is connected, we proceed to connect, otherwise, inform the user and open settings page to connect to a WiFi network
+            // If WiFi is connected, we proceed to connect
             ConnectivityManager connManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
             if (connManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI).isConnected()) {
-                swipeRefreshLayout.setRefreshing(true);
-                webSocketUtils.connectWebSocket(preferences.getString(SettingsFragment.HUB_URL, null), webSocketListener);
+                // Check that the WebSocket has not been created before -- this is for cases when refreshData is called, the
+                // WebSocket is created but not connected yet, since we do not want multiple WebSockets open simultaneously.
+                if (webSocketUtils.getWebSocket() == null) {
+                    // Update the UI to reflect the fact that we are connecting; shows a loading spinner
+                    swipeRefreshLayout.setRefreshing(true);
+                    // Connect and create the new WebSocket
+                    webSocketUtils.connectWebSocket(preferences.getString(SettingsFragment.HUB_URL, null), webSocketListener);
+                }
             } else {
+                // Inform the user that WIFi is not connected and proceed to open settings page to connect to a WiFi network
                 Snackbar snackbar = Snackbar.make(findViewById(android.R.id.content), R.string.error_wifi_not_connected, Snackbar.LENGTH_INDEFINITE);
                 snackbar.setAction(R.string.action_connect, v -> {
                     try {
@@ -283,35 +294,50 @@ public class MainActivity extends AppCompatActivity
             }
             return false;
         } else {
+            // If the WebSocket is already connected it is ready for sending messages
             WebSocket webSocket = webSocketUtils.getWebSocket();
+            // Iterate over all available Sensor ID + Sensor SubID combinations and request both readings and their target values
             for (Sensor sensor : sensors.getList()) {
                 for (Integer SubID : sensor.getValues().keySet()) {
                     Log.d("WebSocket", "Requesting data from sensor " + sensor.getSID() + " #" + SubID);
                     Params params = new Params().setSID(sensor.getSID()).setSubID(SubID);
-                    webSocket.send(gson.toJson(new CustomJsonObject().setMethod(Methods.DATA_GET).setId(637).setParams(params)));
-                    webSocket.send(gson.toJson(new CustomJsonObject().setMethod(Methods.HEATER_GET_LIMITS).setId(638).setParams(params)));
+                    webSocket.send(gson.toJson(new CustomJsonObject().setMethod(Methods.DATA_GET).setId(Methods.Codes.DATA_GET).setParams(params)));
+                    webSocket.send(gson.toJson(new CustomJsonObject().setMethod(Methods.HEATER_GET_LIMITS).setId(Methods.Codes.HEATER_GET_LIMITS).setParams(params)));
                 }
             }
-            webSocket.send(gson.toJson(new CustomJsonObject().setId(8347).setMethod(Methods.HEATER_GET_STATUS)));
+            // Request information on the current state of the heater (on/off/auto ...)
+            webSocket.send(gson.toJson(new CustomJsonObject().setId(Methods.Codes.HEATER_GET_STATUS).setMethod(Methods.HEATER_GET_STATUS)));
             return true;
         }
     }
 
+
+    /**
+     * onPause is called when this activity goes out of view -- for example when the user switches to another application or locks their phone
+     */
     @Override
     protected void onPause() {
         super.onPause();
-        if (web_socket_connected[0]) webSocketUtils.getWebSocket().close(4522, "onPause");
+        // We close the webSocket (it will be recreated in onResume)
+        if (webSocketUtils.isWebSocketConnected()) webSocketUtils.getWebSocket().close(4522, "onPause");
+        // and stop requesting new sensor readings automatically
         handler.removeCallbacks(refreshData);
     }
 
+    /**
+     * onBackPressed is called when the Android (either virtual or physical) back button is pressed
+     */
     @Override
     public void onBackPressed() {
+        // If the navigation drawer (side menu) is open, this is our priority in closing it
         DrawerLayout drawer = findViewById(R.id.drawer_layout);
         if (drawer.isDrawerOpen(GravityCompat.START)) {
             drawer.closeDrawer(GravityCompat.START);
         } else {
             // Handle back presses for navigating up from fragment to fragment
             if (fragmentManager.getBackStackEntryCount() == 0) {
+                // If there is no parent fragment to navigate to, we let the system handle the
+                // default back button action, which is usually to close (finish) the activity
                 super.onBackPressed();
             } else {
                 fragmentManager.popBackStack(null, FragmentManager.POP_BACK_STACK_INCLUSIVE);
@@ -319,50 +345,144 @@ public class MainActivity extends AppCompatActivity
         }
     }
 
-    @SuppressWarnings("StatementWithEmptyBody")
+    /**
+     * onNavigationItemSelected is called when a menu item is clicked in the navigation menu
+     * @param item The item that was selected in the navigation view
+     * @return Return true to display the item as the selected item
+     */
     @Override
     public boolean onNavigationItemSelected(@NonNull MenuItem item) {
-        // Handle navigation view item clicks here.
+
         int id = item.getItemId();
-
-        menuItem = item;
-        Fragment fragment = null;
-
-        Class fragmentClass;
-        Bundle bundle = new Bundle();
 
         switch (id) {
             case R.id.nav_dashboard:
-                fragmentClass = DashboardFragment.class;
+                mViewPager.setCurrentItem(0, true);
                 break;
             case R.id.nav_settings:
-                fragmentClass = SettingsFragment.class;
+                // Dashboard    = 1
+                // Sensors.size = number of sensors
+                // Settings     = 1
+                // Index @ 0    = -1
+                mViewPager.setCurrentItem(sensors.getList().size() + 1, true);
                 break;
             default:
-                fragmentClass = SensorFragment.class;
-                bundle.putInt(Sensor.SID, item.getItemId());
+                mViewPager.setCurrentItem(sensors.getList().indexOf(sensors.getBySID(id)) + 1, true);
+                break;
         }
 
-        try {
-            fragment = (Fragment) fragmentClass.newInstance();
-            fragment.setArguments(bundle);
-        } catch (IllegalAccessException e) {
-            e.printStackTrace();
-        } catch (InstantiationException e) {
-            e.printStackTrace();
-        }
-
-        assert fragment != null;
-        fragmentManager.beginTransaction()
-                .replace(R.id.frame_layout, fragment, fragment.getClass().getSimpleName())
-                .commit();
-
+        // If the item is 'checkable' (this property is set in the XML of the menu {@link R.menu.activity_main_drawer})
+        // then we set the item as checked and set the appropriate title on the toolbar
         if (item.isCheckable()) {
             navigationView.setCheckedItem(item);
             setTitle(item.getTitle());
         }
+
+        // Finally we close the drawer when an item is selected since the action (i.e. scrolling
+        // the right sensor page etc.) will otherwise happen behind the navigation view.
         DrawerLayout drawer = findViewById(R.id.drawer_layout);
         drawer.closeDrawer(GravityCompat.START);
+
+        // We always return true since we want to display the item as the selected item
         return true;
+    }
+
+    private void setUpViewPager() {
+        // Create the adapter that will return a fragment for each of the three
+        // primary sections of the activity.
+        mSectionsPagerAdapter = new SectionsPagerAdapter(getSupportFragmentManager(), sensors);
+
+        // Set up the ViewPager with the sections adapter.
+        mViewPager = findViewById(R.id.view_pager);
+        mViewPager.setAdapter(mSectionsPagerAdapter);
+
+        // Listen for actions done to the view pager
+        mViewPager.addOnPageChangeListener(new ViewPager.OnPageChangeListener() {
+            @Override
+            public void onPageScrolled(int position, float positionOffset, int positionOffsetPixels) {
+
+            }
+
+            @Override
+            public void onPageSelected(int position) {
+                MenuItem item;
+                int count = mSectionsPagerAdapter.getCount();
+                if (position == 0) {
+                    item = navigationView.findViewById(R.id.nav_dashboard);
+                } else if (position == count - 1 && count != 1) {
+                    item = navigationView.findViewById(R.id.nav_settings);
+                } else {
+                    item = navigationView.findViewById(sensors.getList().get(position - 1).getSID());
+                }
+                if (item != null) {
+                    if (item.isCheckable()) {
+                        navigationView.setCheckedItem(item);
+                        setTitle(item.getTitle());
+                    }
+                }
+            }
+
+            @Override
+            public void onPageScrollStateChanged(int state) {
+                if (swipeRefreshLayout != null) {
+                    swipeRefreshLayout.setEnabled(state == ViewPager.SCROLL_STATE_IDLE);
+                }
+            }
+        });
+    }
+
+    /**
+     * When we discover a new sensor, we use {@link Sensors.OnListChangedListener} to know when to update the {@link ViewPager}
+     * @param list A list of sensors that we will use to generate fragments
+     */
+    @Override
+    public void onListChanged(List<Sensor> list) {
+        MainActivity.this.runOnUiThread(this::setUpViewPager);
+    }
+
+    /**
+     * A {@link FragmentStatePagerAdapter} that returns a fragment corresponding to
+     * one of the sections/tabs/pages.
+     */
+    public class SectionsPagerAdapter extends FragmentStatePagerAdapter {
+
+        Sensors sensors;
+
+        /**
+         * @param fm A {@link FragmentManager}, usually just pass in getSupportFragmentManager()
+         * @param s A {@link Sensors} -- basically just a list of currently available sensors
+         */
+        SectionsPagerAdapter(FragmentManager fm, Sensors s) {
+            super(fm);
+            sensors = s;
+        }
+
+        /**
+         * getItem is called to instantiate the fragment for the given page.
+         * @param position The position of the fragment in the "list" -- indexing from 0
+         * @return Return an instance of the appropriate fragment for the given page
+         */
+        @Override
+        public Fragment getItem(int position) {
+            // Make sure the last item is the Settings page
+            if (position == getCount() - 1 && getCount() != 1)
+                return SettingsFragment.newInstance();
+
+            // The first item is the Dashboard and everything in between is sensor screens
+            switch (position) {
+                case 0:
+                    return DashboardFragment.newInstance();
+                default:
+                    return SensorFragment.newInstance(sensors.getList().get(position - 1).getSID());
+            }
+        }
+
+        @Override
+        public int getCount() {
+            // If the sensors are not loaded yet, only show the dashboard. We will load other fragments later.
+            if (sensors.getList().size() == 0) return 1;
+            // Otherwise show the same number of pages that there are sensors plus Dashboard and Settings
+            return sensors.getList().size() + 2;
+        }
     }
 }

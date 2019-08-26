@@ -122,7 +122,7 @@ public class Sensor {
 
     private void onHeaterChanged(WebSocket webSocket) {
         webSocket.send(new Gson().toJson(
-                new CustomJsonObject().setMethod(Methods.HEATER_SET_LIMITS).setId(639).setParams(new Params()
+                new CustomJsonObject().setMethod(Methods.HEATER_SET_LIMITS).setId(Methods.Codes.HEATER_SET_LIMITS).setParams(new Params()
                         .setSID(sensorSID)
                         .setSubID(targetSubID)
                         .setMin(targetMin)

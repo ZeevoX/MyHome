@@ -29,7 +29,21 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity android:name=".ui.SetupActivity" android:theme="@style/AppTheme.NoActionBar.Translucent"/>
+        <activity
+            android:name=".ui.SetupActivity"
+            android:theme="@style/AppTheme.NoActionBar.Translucent" />
+        <activity
+            android:name=".ui.SwipeGestureTestActivity"
+            android:label="@string/title_activity_test"
+            android:theme="@style/AppTheme.NoActionBar" />
+        <activity
+            android:name=".ui.GraphActivity"
+            android:parentActivityName=".ui.MainActivity"
+            android:theme="@style/AppTheme">
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value=".ui.MainActivity" />
+        </activity>
     </application>
 
 </manifest>

@@ -71,4 +71,6 @@
     <string name="dialog_hint_hub_url">Hub LAN URL</string>
     <string name="dialog_hint_data_url">Historical Data URL</string>
     <string name="dialog_setup_desc">You can always change these later in settings</string>
+    <string name="title_activity_test">Developer testing activity</string>
+    <string name="section_format">Hello World from section: %1$d</string>
 </resources>

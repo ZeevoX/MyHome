@@ -5,6 +5,7 @@ import java.util.List;
 
 public class Sensors {
     private final List<Sensor> list = new ArrayList<>();
+    OnListChangedListener callback;
 
     public List<Sensor> getList() {
         return list;
@@ -17,5 +18,18 @@ public class Sensors {
             }
         }
         return null;
+    }
+
+    public void addSensor(Sensor sensor) {
+        list.add(sensor);
+        callback.onListChanged(list);
+    }
+
+    public void setOnHeadlineSelectedListener(OnListChangedListener callback) {
+        this.callback = callback;
+    }
+
+    public interface OnListChangedListener {
+        void onListChanged(List<Sensor> list);
     }
 }

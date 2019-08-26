@@ -1,11 +1,11 @@
 package net.zeevox.myhome.ui;
 
 import android.app.Dialog;
+import android.content.Intent;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v4.app.Fragment;
-import android.support.v4.app.FragmentTransaction;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -19,7 +19,6 @@ import net.zeevox.myhome.R;
 import net.zeevox.myhome.Sensor;
 
 import java.text.DecimalFormat;
-import java.util.Objects;
 
 public class SensorFragment extends Fragment {
 
@@ -34,15 +33,18 @@ public class SensorFragment extends Fragment {
     private boolean targetEnabled;
     private double timestamp;
 
+    public static SensorFragment newInstance(int sid) {
+        SensorFragment fragment = new SensorFragment();
+        Bundle bundle = new Bundle();
+        bundle.putInt(Sensor.SID, sid);
+        fragment.setArguments(bundle);
+        return fragment;
+    }
+
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
-        return inflater.inflate(R.layout.activity_sensor, container, false);
-    }
-
-    @Override
-    public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
-        super.onViewCreated(view, savedInstanceState);
+        View view = inflater.inflate(R.layout.activity_sensor, container, false);
 
         assert getArguments() != null;
 
@@ -138,25 +140,15 @@ public class SensorFragment extends Fragment {
             }
             ((TextView) view.findViewById(R.id.last_updated)).setText(status);
         }
+
+        return view;
     }
 
     private void startGraphFragment(int sid, int subid) {
-        try {
-            Fragment fragment = GraphFragment.class.newInstance();
-            Bundle bundle = new Bundle();
-            bundle.putInt(Sensor.SID, sid);
-            bundle.putInt(Sensor.SUBID, subid);
-            fragment.setArguments(bundle);
-            FragmentTransaction fragmentTransaction = Objects.requireNonNull(getActivity()).getSupportFragmentManager().beginTransaction();
-            fragmentTransaction.setCustomAnimations(android.R.anim.fade_in, android.R.anim.fade_out);
-            fragmentTransaction.replace(R.id.frame_layout, fragment, TAG)
-                    .addToBackStack(TAG)
-                    .commit();
-        } catch (IllegalAccessException e) {
-            e.printStackTrace();
-        } catch (java.lang.InstantiationException e) {
-            e.printStackTrace();
-        }
+        Intent intent = new Intent(getActivity(), GraphActivity.class);
+        intent.putExtra(Sensor.SID, sid);
+        intent.putExtra(Sensor.SUBID, subid);
+        startActivity(intent);
     }
 
     public void onSensorUpdated(@NonNull Sensor s) {

@@ -8,4 +8,14 @@ public class Methods {
     public static final String HEATER_SET_LIMITS = "Hub.Heater.SetLimits";
     public static final String HEATER_SET_STATUS = "Hub.Heater.Set";
     public static final String SENSOR_GET_DATA = "Sensor.GetData";
+
+    public class Codes {
+        public static final int DATA_GET = 637;
+        public static final int DATA_LIST = 1157;
+        public static final int HEATER_GET_LIMITS = 638;
+        public static final int HEATER_GET_STATUS = 8347;
+        public static final int HEATER_SET_LIMITS = 639;
+        public static final int HEATER_SET_STATUS = 53;
+        public static final int SENSOR_GET_DATA = 100;
+    }
 }

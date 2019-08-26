@@ -18,6 +18,10 @@ public class SettingsFragment extends PreferenceFragmentCompat {
     public static final String SHOW_LIMIT_LINE = "show_limit_line";
     public static final String VALUE_UNITS = "value_units";
 
+    public static SettingsFragment newInstance() {
+        return new SettingsFragment();
+    }
+
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);

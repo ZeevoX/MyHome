@@ -28,11 +28,15 @@ import okhttp3.WebSocket;
 
 public class DashboardFragment extends Fragment {
 
-    private View view;
-    private Heater heater;
     private final static String HEATER_SELECTION_OFF = "off";
     private final static String HEATER_SELECTION_AUTO = "auto";
     private final static String HEATER_SELECTION_ON = "on";
+    private View view;
+    private Heater heater;
+
+    public static DashboardFragment newInstance() {
+        return new DashboardFragment();
+    }
 
     @Nullable
     @Override
@@ -44,14 +48,20 @@ public class DashboardFragment extends Fragment {
     public void onViewCreated(@NonNull View v, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(v, savedInstanceState);
 
-        this.view = v;
+        view = getView();
+
+        WebSocket mWebSocket = MainActivity.webSocketUtils.getWebSocket();
+        if (mWebSocket != null) {
+            mWebSocket.send(new Gson().toJson(new CustomJsonObject()
+                    .setMethod(Methods.HEATER_GET_STATUS).setId(Methods.Codes.HEATER_GET_STATUS)));
+        }
 
         view.findViewById(R.id.heater_status_layout).setOnClickListener(v5 -> {
 
             final String[] selection = new String[1];
 
             if (heater == null) {
-                Snackbar.make(view.findViewById(android.R.id.content), R.string.error_no_heater, Snackbar.LENGTH_SHORT).show();
+                Snackbar.make(view, R.string.error_no_heater, Snackbar.LENGTH_SHORT).show();
                 return;
             }
 
@@ -121,7 +131,7 @@ public class DashboardFragment extends Fragment {
             Button positiveButton = dialog.findViewById(R.id.dialog_button_ok);
             positiveButton.setOnClickListener(v1 -> {
                 WebSocket webSocket = MainActivity.webSocketUtils.getWebSocket();
-                CustomJsonObject customJsonObject = new CustomJsonObject().setId(53).setMethod(Methods.HEATER_SET_STATUS);
+                CustomJsonObject customJsonObject = new CustomJsonObject().setId(Methods.Codes.HEATER_SET_STATUS).setMethod(Methods.HEATER_SET_STATUS);
                 Params params = new Params();
                 switch (selection[0]) {
                     case HEATER_SELECTION_OFF:
@@ -142,11 +152,11 @@ public class DashboardFragment extends Fragment {
         });
     }
 
-    public void onHeaterUpdated(@NonNull Activity activity,  @NonNull Heater heater) {
+    public void onHeaterUpdated(@NonNull Activity activity, @NonNull Heater heater) {
         Log.i("DashboardFragment", "onHeaterUpdated");
         this.heater = heater;
         activity.runOnUiThread(() -> {
-            TextView heaterStatus = view.findViewById(R.id.heater_status);
+            TextView heaterStatus = activity.findViewById(R.id.heater_status);
             if (!heater.isOn() && heater.isInAutomaticMode()) {
                 heaterStatus.setText(R.string.state_off_auto);
             } else if (!heater.isOn() && heater.isInManualMode()) {
