@@ -1,0 +1,17 @@
+{
+  "wifi": {
+    "ap": {
+      "Xenable": false
+    },
+    "staX": {
+      "enable": true,
+      "ssid": "Over_9000_Internets",
+      "pass": "Over_9000_Internets"
+    }
+  },
+  "sensor_id": 5,
+  "sensor_name": "Attic Temp 1",
+  "hub_address": "ScotsPine_hub",
+  "interval": 60,
+  "hub_address": "ws://192.168.11.5/rpc"
+}
